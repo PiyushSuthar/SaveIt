@@ -75,7 +75,8 @@ data class GeminiSchema(
 @Serializable
 data class GeminiSchemaProperty(
   val type: String,
-  val description: String? = null
+  val description: String? = null,
+  val items: GeminiSchemaProperty? = null
 )
 
 @Serializable
@@ -312,6 +313,7 @@ object NetworkHelper {
       connection.connectTimeout = 15000
       connection.readTimeout = 15000
       connection.setRequestProperty("Content-Type", "application/json")
+      connection.setRequestProperty("User-Agent", "SaveIt/1.0 (Android; rv:1.0)")
       if (isCustom && settings.apiKey.isNotBlank()) {
         connection.setRequestProperty("Authorization", "Bearer ${settings.apiKey}")
       }
@@ -424,7 +426,8 @@ object NetworkHelper {
   suspend fun chatWithAi(
     history: List<ChatMessage>,
     contextItems: List<SavedItem>,
-    settings: AppSettings
+    settings: AppSettings,
+    repository: com.piyushsuthar.saveit.data.DataRepository? = null
   ): String = withContext(Dispatchers.IO) {
     if (settings.apiKey.isBlank() && settings.apiProvider == "Gemini") {
       return@withContext "Please configure an API key in settings."
@@ -435,7 +438,7 @@ object NetworkHelper {
     val isCompatible = isCustom || isFreePublic
     
     if (!isCompatible) {
-      return@withContext geminiChatWithTools(history, contextItems, settings)
+      return@withContext geminiChatWithTools(history, contextItems, settings, emptyList(), 0, repository)
     }
 
     try {
@@ -455,8 +458,9 @@ object NetworkHelper {
       val connection = url.openConnection() as HttpURLConnection
       connection.requestMethod = "POST"
       connection.connectTimeout = 30000
-      connection.readTimeout = 30000
+      connection.readTimeout = 90000
       connection.setRequestProperty("Content-Type", "application/json")
+      connection.setRequestProperty("User-Agent", "SaveIt/1.0 (Android; rv:1.0)")
       if (isCustom && settings.apiKey.isNotBlank()) {
         connection.setRequestProperty("Authorization", "Bearer ${settings.apiKey}")
       }
@@ -505,11 +509,10 @@ object NetworkHelper {
         ?.jsonObject?.get("message")
         ?.jsonObject?.get("content")
         ?.jsonPrimitive?.content
-      
-      textResponse ?: "Error: Could not parse response."
+      return@withContext textResponse ?: "No response from AI."
     } catch (e: Exception) {
-      Log.e("NetworkHelper", "Chat error: ${e.message}", e)
-      "Error: ${e.message}"
+      Log.e("NetworkHelper", "Failed to generate chat response: ${e.message}", e)
+      return@withContext "Sorry, I encountered an error: ${e.message}"
     }
   }
 
@@ -517,8 +520,9 @@ object NetworkHelper {
     history: List<ChatMessage>,
     contextItems: List<SavedItem>,
     settings: AppSettings,
-    additionalHistory: List<GeminiContent> = emptyList(),
-    depth: Int = 0
+    additionalHistory: List<GeminiContent>,
+    depth: Int,
+    repository: com.piyushsuthar.saveit.data.DataRepository? = null
   ): String = withContext(Dispatchers.IO) {
     if (depth > 5) return@withContext "Error: Too many tool calls."
 
@@ -562,6 +566,38 @@ object NetworkHelper {
                   )
                 ),
                 required = listOf("query")
+              )
+            ),
+            GeminiFunctionDeclaration(
+              name = "create_group",
+              description = "Create a new group to categorize saved items.",
+              parameters = GeminiSchema(
+                type = "OBJECT",
+                properties = mapOf(
+                  "name" to GeminiSchemaProperty(type = "STRING", description = "The name of the new group"),
+                  "itemIds" to GeminiSchemaProperty(
+                    type = "ARRAY",
+                    description = "List of item IDs to include in the new group. Use search_items to find these IDs.",
+                    items = GeminiSchemaProperty(type = "STRING")
+                  )
+                ),
+                required = listOf("name", "itemIds")
+              )
+            ),
+            GeminiFunctionDeclaration(
+              name = "add_to_group",
+              description = "Add saved items to an existing group.",
+              parameters = GeminiSchema(
+                type = "OBJECT",
+                properties = mapOf(
+                  "groupId" to GeminiSchemaProperty(type = "STRING", description = "The ID of the existing group"),
+                  "itemIds" to GeminiSchemaProperty(
+                    type = "ARRAY",
+                    description = "List of item IDs to add.",
+                    items = GeminiSchemaProperty(type = "STRING")
+                  )
+                ),
+                required = listOf("groupId", "itemIds")
               )
             )
           )
@@ -663,7 +699,69 @@ object NetworkHelper {
           )
 
           // Recursive call with new history
-          return@withContext geminiChatWithTools(history, contextItems, settings, newHistory, depth + 1)
+          return@withContext geminiChatWithTools(history, contextItems, settings, newHistory, depth + 1, repository)
+        } else if (name == "create_group" || name == "add_to_group") {
+          val functionResultJson = buildJsonObject {
+            if (repository == null) {
+              put("error", kotlinx.serialization.json.JsonPrimitive("Repository not available to execute this action."))
+            } else {
+              try {
+                if (name == "create_group") {
+                  val groupName = args?.get("name")?.jsonPrimitive?.content ?: "New Group"
+                  val itemIds = args?.get("itemIds")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList()
+                  
+                  val newGroup = com.piyushsuthar.saveit.data.ItemGroup(
+                    id = java.util.UUID.randomUUID().toString(),
+                    name = groupName,
+                    createdAt = System.currentTimeMillis()
+                  )
+                  repository.saveItemGroup(newGroup)
+                  
+                  val itemsToUpdate = repository.savedItems.value.filter { it.id in itemIds }.map { it.copy(groupId = newGroup.id) }
+                  repository.saveItems(itemsToUpdate)
+
+                  put("success", kotlinx.serialization.json.JsonPrimitive(true))
+                  put("groupId", kotlinx.serialization.json.JsonPrimitive(newGroup.id))
+                  put("message", kotlinx.serialization.json.JsonPrimitive("Group '$groupName' created with ${itemsToUpdate.size} items."))
+                } else {
+                  val groupId = args?.get("groupId")?.jsonPrimitive?.content ?: ""
+                  val itemIds = args?.get("itemIds")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList()
+                  
+                  val group = repository.itemGroups.value.find { it.id == groupId }
+                  if (group != null) {
+                    val itemsToUpdate = repository.savedItems.value.filter { it.id in itemIds }.map { it.copy(groupId = groupId) }
+                    repository.saveItems(itemsToUpdate)
+                    put("success", kotlinx.serialization.json.JsonPrimitive(true))
+                    put("message", kotlinx.serialization.json.JsonPrimitive("Added ${itemsToUpdate.size} items to group '${group.name}'."))
+                  } else {
+                    put("error", kotlinx.serialization.json.JsonPrimitive("Group not found."))
+                  }
+                }
+              } catch (e: Exception) {
+                put("error", kotlinx.serialization.json.JsonPrimitive("Exception: ${e.message}"))
+              }
+            }
+          }
+
+          val newHistory = additionalHistory.toMutableList()
+          newHistory.add(
+            GeminiContent(
+              role = "model",
+              parts = listOf(
+                GeminiPart(functionCall = GeminiFunctionCall(name = name, args = args ?: buildJsonObject {}))
+              )
+            )
+          )
+          newHistory.add(
+            GeminiContent(
+              role = "user",
+              parts = listOf(
+                GeminiPart(functionResponse = GeminiFunctionResponse(name = name, response = functionResultJson))
+              )
+            )
+          )
+          
+          return@withContext geminiChatWithTools(history, contextItems, settings, newHistory, depth + 1, repository)
         }
         
         return@withContext "Called unknown tool: $name"

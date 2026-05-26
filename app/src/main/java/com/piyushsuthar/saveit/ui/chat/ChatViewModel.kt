@@ -92,7 +92,7 @@ class ChatViewModel(private val repository: DataRepository) : ViewModel() {
       val settings = repository.settings.value
 
       // Using the updated chatWithAi which takes the history instead of just text
-      val rawReply = NetworkHelper.chatWithAi(_messages.value, contextItems, settings)
+      val rawReply = NetworkHelper.chatWithAi(_messages.value, contextItems, settings, repository)
       
       // Parse [ITEM:id]
       val itemRegex = Regex("\\[ITEM:(.*?)\\]")

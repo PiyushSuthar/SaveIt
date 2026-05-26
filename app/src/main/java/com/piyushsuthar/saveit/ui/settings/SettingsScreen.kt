@@ -400,7 +400,6 @@ private fun AiConfigurationSection(
   var apiKeyText by remember(settings.apiKey) { mutableStateOf(settings.apiKey) }
   var apiKeyVisible by remember { mutableStateOf(false) }
   var promptText by remember(settings.systemPrompt) { mutableStateOf(settings.systemPrompt) }
-  var chatPromptText by remember(settings.chatSystemPrompt) { mutableStateOf(settings.chatSystemPrompt) }
   var providerExpanded by remember { mutableStateOf(false) }
   var modelExpanded by remember { mutableStateOf(false) }
   var baseUrlText by remember(settings.apiBaseUrl) { mutableStateOf(settings.apiBaseUrl) }
@@ -588,60 +587,58 @@ private fun AiConfigurationSection(
       )
     }
 
-    // ── Model selector (ExposedDropdownMenuBox) ──
-    ExposedDropdownMenuBox(
-      expanded = modelExpanded,
-      onExpandedChange = { modelExpanded = it }
-    ) {
-      OutlinedTextField(
-        value = settings.selectedModel,
-        onValueChange = {},
-        label = { Text(if (settings.apiProvider == "Custom") "Model ID" else "Gemini Model") },
-        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded) },
-        modifier = Modifier
-          .fillMaxWidth()
-          .menuAnchor(),
-        shape = RoundedCornerShape(12.dp)
-      )
-      ExposedDropdownMenu(
-        expanded = modelExpanded,
-        onDismissRequest = { modelExpanded = false }
-      ) {
-        models.forEach { model ->
-          DropdownMenuItem(
-            text = { Text(model) },
-            onClick = {
-              onSettingsChange(settings.copy(selectedModel = model))
-              modelExpanded = false
-            },
-            leadingIcon = {
-              Icon(Icons.Default.Memory, contentDescription = null, modifier = Modifier.size(18.dp))
-            },
-            trailingIcon = {
-              if (model == settings.selectedModel) {
-                Icon(
-                  Icons.Default.Check,
-                  contentDescription = "Selected",
-                  tint = MaterialTheme.colorScheme.primary,
-                  modifier = Modifier.size(18.dp)
-                )
-              }
-            }
-          )
-        }
-      }
-    }
     
-    // Custom Model Input if Custom Provider
-    AnimatedVisibility(visible = settings.apiProvider == "Custom") {
-      OutlinedTextField(
-        value = settings.selectedModel,
-        onValueChange = { onSettingsChange(settings.copy(selectedModel = it)) },
-        label = { Text("Custom Model ID (or select above)") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-        shape = RoundedCornerShape(12.dp)
-      )
+    // ── Model Selection ──
+    AnimatedVisibility(visible = settings.apiProvider != "Free Public (Pollinations.ai)") {
+      if (settings.apiProvider == "Gemini") {
+        val geminiModels = listOf("gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash", "gemini-2.0-pro")
+        ExposedDropdownMenuBox(
+          expanded = modelExpanded,
+          onExpandedChange = { modelExpanded = it }
+        ) {
+          OutlinedTextField(
+            value = settings.selectedModel,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Gemini Model") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded) },
+            modifier = Modifier
+              .fillMaxWidth()
+              .menuAnchor(),
+            shape = RoundedCornerShape(12.dp)
+          )
+          ExposedDropdownMenu(
+            expanded = modelExpanded,
+            onDismissRequest = { modelExpanded = false }
+          ) {
+            geminiModels.forEach { model ->
+              DropdownMenuItem(
+                text = { Text(model) },
+                onClick = {
+                  onSettingsChange(settings.copy(selectedModel = model))
+                  modelExpanded = false
+                },
+                leadingIcon = { Icon(Icons.Default.Memory, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                trailingIcon = {
+                  if (model == settings.selectedModel) {
+                    Icon(Icons.Default.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                  }
+                }
+              )
+            }
+          }
+        }
+      } else if (settings.apiProvider == "Custom") {
+        OutlinedTextField(
+          value = settings.selectedModel,
+          onValueChange = { onSettingsChange(settings.copy(selectedModel = it)) },
+          label = { Text("Model ID") },
+          singleLine = true,
+          modifier = Modifier.fillMaxWidth(),
+          shape = RoundedCornerShape(12.dp),
+          supportingText = { Text("E.g., llama-3-70b, mixtral-8x7b, openai") }
+        )
+      }
     }
 
     // ── System Prompt field ──
@@ -680,44 +677,6 @@ private fun AiConfigurationSection(
       }
     }
 
-    Spacer(modifier = Modifier.height(16.dp))
-
-    // ── Chat System Prompt field ──
-    OutlinedTextField(
-      value = chatPromptText,
-      onValueChange = { chatPromptText = it },
-      label = { Text("Chat System Prompt") },
-      modifier = Modifier
-        .fillMaxWidth()
-        .heightIn(min = 120.dp),
-      shape = RoundedCornerShape(12.dp),
-      maxLines = 8,
-      supportingText = {
-        Text(
-          "Instructions sent to Gemini for the chat assistant",
-          style = MaterialTheme.typography.labelSmall,
-          color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-      }
-    )
-
-    AnimatedVisibility(
-      visible = chatPromptText != settings.chatSystemPrompt,
-      enter = fadeIn() + expandVertically(),
-      exit = fadeOut() + shrinkVertically()
-    ) {
-      FilledTonalButton(
-        onClick = { onSettingsChange(settings.copy(chatSystemPrompt = chatPromptText)) },
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp)
-      ) {
-        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-        Spacer(modifier = Modifier.width(8.dp))
-        Text("Save Chat Prompt")
-      }
-    }
-
-    Spacer(modifier = Modifier.height(4.dp))
   }
 }
 

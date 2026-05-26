@@ -148,7 +148,11 @@ class ChatViewModel(private val repository: DataRepository) : ViewModel() {
     viewModelScope.launch {
       val existing = chatThreads.value.find { it.id == currentThreadId }
       if (existing != null) {
-        repository.saveChatThread(existing.copy(messages = _messages.value))
+        val newTitle = if (existing.title == "New Chat" && _messages.value.size > 1) {
+          val firstUserMsg = _messages.value.find { it.role == "user" }?.content ?: ""
+          if (firstUserMsg.isNotBlank()) firstUserMsg.take(30) + if (firstUserMsg.length > 30) "..." else "" else "New Chat"
+        } else existing.title
+        repository.saveChatThread(existing.copy(title = newTitle, messages = _messages.value))
       }
     }
   }

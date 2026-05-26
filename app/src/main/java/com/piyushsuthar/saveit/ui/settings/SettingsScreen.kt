@@ -130,11 +130,11 @@ fun SettingsScreen(
         modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
       )
       Text(
-        text = "Local-first, privacy-focused",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+        text = "Your digital memory, stored locally and entirely private.\nSave links, organize knowledge, and chat with AI seamlessly.",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
         textAlign = TextAlign.Center,
-        modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp)
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp).padding(bottom = 32.dp)
       )
     }
   }
@@ -227,9 +227,16 @@ fun SettingsAiScreen(
     ) {
       SettingsToggleRow(
         title = "Auto-Summarize",
-        description = "Categorize and summarize saved items with Gemini AI",
+        description = "Categorize and summarize saved items with AI",
         checked = settings.autoSummarize,
         onCheckedChange = { viewModel.updateSettings(settings.copy(autoSummarize = it)) }
+      )
+      
+      Text(
+        text = "SaveIt uses AI to automatically summarize and categorize links that you save, and powers the chat assistant so you can talk to your database. You can use the Free Public Pollinations API out-of-the-box, or configure your own API keys below.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
       )
 
       AnimatedVisibility(
@@ -277,6 +284,13 @@ fun SettingsDataScreen(
         .padding(padding)
         .verticalScroll(rememberScrollState())
     ) {
+      Text(
+        text = "Manage your local data. You can export your entire SaveIt database as a JSON backup to save somewhere secure, or import a previous backup to restore your items and chats.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
+      )
+
       Row(
         modifier = Modifier
           .fillMaxWidth()
@@ -357,6 +371,22 @@ fun SettingsDangerScreen(
         .padding(padding)
         .verticalScroll(rememberScrollState())
     ) {
+      Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.padding(16.dp).fillMaxWidth()
+      ) {
+        Row(modifier = Modifier.padding(16.dp)) {
+          Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
+          Spacer(modifier = Modifier.width(16.dp))
+          Text(
+            text = "Warning: These actions are irreversible. Once you clear your data, it cannot be recovered unless you have made a backup beforehand.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onErrorContainer
+          )
+        }
+      }
+
       OutlinedButton(
         onClick = { showClearDialog = true },
         modifier = Modifier
